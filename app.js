@@ -9,18 +9,24 @@ const chartTypeSelect = document.getElementById("chartType");
 const renderBtn = document.getElementById("renderBtn");
 const dataPreview = document.getElementById("dataPreview");
 const canvas = document.getElementById("chartCanvas");
+const platformSelect = document.getElementById("platformSelect");
 
 let currentChart = null;
 
 // --- Populate dropdowns from data ---
-const years = [...new Set(chartData.map(r => r.year))];
+
+
+const years = [...new Set(chartData.map(r => r.year))].sort();
 const genres = [...new Set(chartData.map(r => r.genre))];
+const platforms = [...new Set(chartData.map(r => r.platform))];
 
 years.forEach(m => yearSelect.add(new Option(m, m)));
 genres.forEach(h => genreSelect.add(new Option(h, h)));
+platforms.forEach(p => platformSelect.add(new Option(p, p)));
 
 yearSelect.value = years[0];
 genreSelect.value = genres[0];
+platformSelect.value = platforms[0];
 
 // Preview first 6 rows
 dataPreview.textContent = JSON.stringify(chartData.slice(0, 6), null, 2);
@@ -45,7 +51,7 @@ renderBtn.addEventListener("click", () => {
 function buildConfig(type, { year, genre, metric }) {
   if (type === "bar") return barBygenre(year, metric);
   if (type === "line") return lineOverTime(genre, ["unitsM"]);
-  if (type === "scatter") return scatterTripsVsTemp(genre);
+  if (type === "scatter") return scatterReviewsVsSales(genre);
   if (type === "doughnut") return doughnutMemberVsCasual(year, genre);
   if (type === "radar") return radarCompareNeighborgenres(year);
   return barBygenre(year, metric);
@@ -90,8 +96,10 @@ function barBygenre(year, metric) {
 
 
 function lineOverTime(genre, metrics) {
-  const rows = chartData.filter(r => r.genre === genre);
-  const years = [...new Set(chartData.map(r => r.year))].sort();
+  // Filter by selected platform too
+  const genreFilter = chartData.filter(r => r.genre === genre);
+  const rows = genreFilter.filter(r => r.platform === platformSelect.value);
+  const years = [...new Set(rows.map(r => r.year))].sort();
   const labels = years;
   const datasets = metrics.map(metric => ({
     label: metric,
@@ -118,27 +126,29 @@ function lineOverTime(genre, metrics) {
   };
 }
 
-// SCATTER — relationship between temperature and trips
-function scatterTripsVsTemp(genre) {
-  const rows = chartData.filter(r => r.genre === genre);
 
-  const points = rows.map(r => ({ x: r.tempC, y: r.trips }));
+function scatterReviewsVsSales(genre) {
+  const yearsFilter = chartData.filter(r => r.year === Number(yearSelect.value));
+  const rows = yearsFilter.filter(r => r.genre === genreSelect.value);
+
+  const points = rows.map(r => ({ x: r.reviewScore, y: r.unitsM }));
+
 
   return {
     type: "scatter",
     data: {
       datasets: [{
-        label: `Trips vs Temp (${genre})`,
+        label: `Review scores vs Sales (${genre})`,
         data: points
       }]
     },
     options: {
       plugins: {
-        title: { display: true, text: `Does temperature affect trips? (${genre})` }
+        title: { display: true, text: `Does review scores affect (${genre}) in (${yearSelect.value})?` }
       },
       scales: {
-        x: { title: { display: true, text: "Temperature (C)" } },
-        y: { title: { display: true, text: "Trips" } }
+        x: { title: { display: true, text: "ReviewScore" } },
+        y: { title: { display: true, text: "UnitsM" } }
       }
     }
   };
@@ -146,20 +156,27 @@ function scatterTripsVsTemp(genre) {
 
 
 function doughnutMemberVsCasual(year, genre) {
-  const row = chartData.find(r => r.year === year && r.genre === genre);
+  const yearsFilter = chartData.filter(r => r.year === Number(year));
+  const genreFilter = yearsFilter.filter(r => r.genre === genre);
+  const regions = [...new Set(chartData.map(r => r.region))];
 
-  const member = Math.round(row.memberShare * 100);
-  const casual = 100 - member;
+  const NA = row.NA;
+  const EU = row.EU;
+  const JP = row.JP;
+  const ASIA = 100 - NA - EU - JP;
+
+  console.log("doughnut config", { regions, NA, EU, JP, ASIA }); 
+
 
   return {
     type: "doughnut",
     data: {
-      labels: ["Members (%)", "Casual (%)"],
-      datasets: [{ label: "Rider mix", data: [member, casual] }]
+      labels: regions,
+      datasets: [{ label: "Region Share", data: [NA, EU, JP, ASIA] }]
     },
     options: {
       plugins: {
-        title: { display: true, text: `Rider mix: ${genre} (${year})` }
+        title: { display: true, text: `Region Share: ${genre} (${year})` }
       }
     }
   };
